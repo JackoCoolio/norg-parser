@@ -142,116 +142,108 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                         continue;
                     }
 
-                    if (can_close) {
-                        if (style_stack.popStyle(style)) {
-                            // we're closing this style
+                    if (can_close and style_stack.popStyle(style)) {
+                        // we're closing this style
 
-                            // note: we don't advance the lexer here, because
-                            // that is handled above in the recursive case so
-                            // that the closing symbol isn't included in the
-                            // leaf node that we create below
+                        // note: we don't advance the lexer here, because
+                        // that is handled above in the recursive case so
+                        // that the closing symbol isn't included in the
+                        // leaf node that we create below
 
-                            if (lexer.pos > start_pos) {
-                                return .{ .leaf = lexer.bytes[start_pos..lexer.pos] };
-                            } else {
-                                return null;
-                            }
+                        if (lexer.pos > start_pos) {
+                            return .{ .leaf = lexer.bytes[start_pos..lexer.pos] };
+                        } else {
+                            return null;
                         }
                     }
 
-                    if (can_open) { // and !ws_is_next
-                        // can open
-                        if (style_stack.hasStyle(style)) {
-                            // the style is already open - just advance
+                    if (can_open and !style_stack.hasStyle(style)) { // and !ws_is_next
+                        // opening a new style
+                        var pre_text = lexer.bytes[start_pos..lexer.pos];
+                        const pre_stack_len = style_stack.len;
+
+                        style_stack.push(style);
+
+                        // because !ws_is_next, we know that there is a valid Node up next
+                        lexer.advance(); // skip the style opener
+                        const styled = try parseInner(alloc, lexer, style_stack);
+
+                        // assert that no additional style was opened
+                        // std.debug.assert(style_stack.len <= pre_stack_len);
+
+                        if (style_stack.len < pre_stack_len) {
+                            // we encountered a *different* style closer
+                            // before we closed this one - advance text
+                            // and return text node
+                            const text = lexer.bytes[start_pos..lexer.pos];
+                            // eat the closing token
                             lexer.advance();
-                            continue;
-                        } else {
-                            // opening a new style
-                            var pre_text = lexer.bytes[start_pos..lexer.pos];
-                            const pre_stack_len = style_stack.len;
-
-                            style_stack.push(style);
-
-                            // because !ws_is_next, we know that there is a valid Node up next
-                            lexer.advance(); // skip the style opener
-                            const styled = try parseInner(alloc, lexer, style_stack);
-
-                            // assert that no additional style was opened
-                            // std.debug.assert(style_stack.len <= pre_stack_len);
-
-                            if (style_stack.len < pre_stack_len) {
-                                // we encountered a *different* style closer
-                                // before we closed this one - advance text
-                                // and return text node
-                                const text = lexer.bytes[start_pos..lexer.pos];
-                                // eat the closing token
-                                lexer.advance();
-                                std.log.err("error A", .{});
-                                return .{ .leaf = text };
-                            } else { // style_stack.len == pre_stack_len
-                                // the style stack did not shrink any further,
-                                // and thus our style was closed
-                                var children: std.ArrayListUnmanaged(Node.Child) = try .initCapacity(alloc, 1);
-                                if (Node.fromText(pre_text)) |node| {
-                                    children.addOneAssumeCapacity().* = .{
-                                        .style = null,
-                                        .node = blk: {
-                                            const ptr = try alloc.create(Node);
-                                            ptr.* = node;
-                                            break :blk ptr;
-                                        },
-                                    };
-                                }
-
-                                (try children.addOne(alloc)).* = .{
-                                    .style = style,
+                            std.log.err("error A", .{});
+                            return .{ .leaf = text };
+                        } else { // style_stack.len == pre_stack_len
+                            // the style stack did not shrink any further,
+                            // and thus our style was closed
+                            var children: std.ArrayListUnmanaged(Node.Child) = try .initCapacity(alloc, 1);
+                            if (Node.fromText(pre_text)) |node| {
+                                children.addOneAssumeCapacity().* = .{
+                                    .style = null,
                                     .node = blk: {
-                                        const node = try alloc.create(Node);
-                                        // see above - since the style was closed,
-                                        // we know this isn't null
-                                        node.* = styled.?;
-                                        break :blk node;
+                                        const ptr = try alloc.create(Node);
+                                        ptr.* = node;
+                                        break :blk ptr;
                                     },
                                 };
+                            }
 
-                                // eat the closing token
-                                lexer.advance();
+                            (try children.addOne(alloc)).* = .{
+                                .style = style,
+                                .node = blk: {
+                                    const node = try alloc.create(Node);
+                                    // see above - since the style was closed,
+                                    // we know this isn't null
+                                    node.* = styled.?;
+                                    break :blk node;
+                                },
+                            };
 
-                                // parse the rest!
-                                if (try parseInner(alloc, lexer, style_stack)) |remaining| {
-                                    // concat those nodes onto the end of this one
-                                    switch (remaining) {
-                                        .branch => |br| {
-                                            try children.appendSlice(alloc, br.children);
-                                            alloc.free(br.children);
-                                        },
-                                        .leaf => |_| {
-                                            const new = try children.addOne(alloc);
-                                            new.* = .{
-                                                .style = null,
-                                                .node = blk: {
-                                                    const node = try alloc.create(Node);
-                                                    node.* = remaining;
-                                                    break :blk node;
-                                                },
-                                            };
-                                        },
-                                    }
+                            // eat the closing token
+                            lexer.advance();
+
+                            // parse the rest!
+                            if (try parseInner(alloc, lexer, style_stack)) |remaining| {
+                                // concat those nodes onto the end of this one
+                                switch (remaining) {
+                                    .branch => |br| {
+                                        try children.appendSlice(alloc, br.children);
+                                        alloc.free(br.children);
+                                    },
+                                    .leaf => |_| {
+                                        const new = try children.addOne(alloc);
+                                        new.* = .{
+                                            .style = null,
+                                            .node = blk: {
+                                                const node = try alloc.create(Node);
+                                                node.* = remaining;
+                                                break :blk node;
+                                            },
+                                        };
+                                    },
                                 }
-
-                                return .{
-                                    .branch = .{
-                                        .children = try children.toOwnedSlice(alloc),
-                                    },
-                                };
                             }
 
-                            // check if the style wasn't closed - if not, we should just
-                            // consider everything from pre to now unstyled
-                            if (!style_stack.hasStyle(style)) {
-                                pre_text = lexer.bytes[start_pos..lexer.pos];
-                            }
+                            return .{
+                                .branch = .{
+                                    .children = try children.toOwnedSlice(alloc),
+                                },
+                            };
                         }
+
+                        // check if the style wasn't closed - if not, we should just
+                        // consider everything from pre to now unstyled
+                        if (!style_stack.hasStyle(style)) {
+                            pre_text = lexer.bytes[start_pos..lexer.pos];
+                        }
+
                         continue;
                     }
 
