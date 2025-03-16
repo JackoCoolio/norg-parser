@@ -142,11 +142,29 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                         continue;
                     }
 
+                    if (can_close) {
+                        if (style_stack.popStyle(style)) {
+                            // we're closing this style
+
+                            // note: we don't advance the lexer here, because
+                            // that is handled above in the recursive case so
+                            // that the closing symbol isn't included in the
+                            // leaf node that we create below
+
+                            if (lexer.pos > start_pos) {
+                                return .{ .leaf = lexer.bytes[start_pos..lexer.pos] };
+                            } else {
+                                return null;
+                            }
+                        }
+                    }
+
                     if (can_open) { // and !ws_is_next
                         // can open
                         if (style_stack.hasStyle(style)) {
                             // the style is already open - just advance
                             lexer.advance();
+                            continue;
                         } else {
                             // opening a new style
                             var pre_text = lexer.bytes[start_pos..lexer.pos];
@@ -234,29 +252,6 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                                 pre_text = lexer.bytes[start_pos..lexer.pos];
                             }
                         }
-                        continue;
-                    }
-
-                    if (can_close) {
-                        // can close
-                        if (!style_stack.popStyle(style)) {
-                            // the style wasn't open - eat this token, since
-                            // it's just a regular symbol
-                            lexer.advance();
-                        } else { // we're closing an open style
-
-                            // note: we don't advance the lexer here, because
-                            // that is handled above in the recursive case so
-                            // that the closing symbol isn't included in the
-                            // leaf node that we create below
-
-                            if (lexer.pos > start_pos) {
-                                return .{ .leaf = lexer.bytes[start_pos..lexer.pos] };
-                            } else {
-                                return null;
-                            }
-                        }
-
                         continue;
                     }
 
@@ -467,6 +462,24 @@ test "Node.parse parses a sentence with nested styles" {
                             },
                         },
                     },
+                },
+            },
+        },
+    });
+}
+
+test "weird case" {
+    // should be <b>hello*</b>!
+    try testNodeParse("_hello*_!", .{
+        .branch = .{
+            .children = &[_]Node.Child{
+                .{
+                    .style = .underline,
+                    .node = &.{ .leaf = "hello*" },
+                },
+                .{
+                    .style = null,
+                    .node = &.{ .leaf = "!" },
                 },
             },
         },
