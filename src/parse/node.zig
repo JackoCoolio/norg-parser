@@ -166,9 +166,9 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                         return Node.fromText(lexer.bytes[start_pos..lexer.pos]);
                     }
 
-                    if (can_open and !style_stack.hasStyle(style)) { // and !ws_is_next
+                    if (can_open and !style_stack.hasStyle(style)) {
                         // opening a new style
-                        var pre_text = lexer.bytes[start_pos..lexer.pos];
+                        const pre_text = lexer.bytes[start_pos..lexer.pos];
                         const pre_stack_len = style_stack.len;
 
                         style_stack.push(style);
@@ -176,7 +176,7 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                         // because !ws_is_next, we know that there is a valid Node up next
                         lexer.advance(); // skip the style opener
                         const inner_start_pos = lexer.pos;
-                        const styled = try parseInner(alloc, lexer, style_stack);
+                        var styled = try parseInner(alloc, lexer, style_stack);
                         var should_deinit_styled = true;
                         defer if (should_deinit_styled) if (styled) |s| s.deinit(alloc);
                         if (lexer.pos == inner_start_pos) {
@@ -186,29 +186,33 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                             continue;
                         }
 
-                        if (style_stack.hasStyle(style)) {
-                            // the style wasn't closed, because we either reached
-                            // the end of the document or reached another style
-                            // closer. either way, just return the leaf that we
-                            // have up to here
-                            return Node.fromText(lexer.bytes[start_pos..lexer.pos]);
+                        if (style_stack.popStyle(style)) {
+                            // the style wasn't closed, because we either
+                            // reached the end of the document or reached
+                            // another style closer. either way, just return the
+                            // leaf that we have up to here
+                            try styled.?.mergeFront(alloc, lexer.bytes[start_pos..inner_start_pos]);
+                            should_deinit_styled = false;
+                            return styled;
                         }
 
                         if (style_stack.len < pre_stack_len) {
-                            // we encountered a *different* style closer
-                            // before we closed this one - advance text
-                            // and return text node
-                            const text = lexer.bytes[start_pos..lexer.pos];
+                            // we encountered a *different* style closer before
+                            // we closed this one, so styled isn't any different
+                            // from `pre_text`. that means we should just return
+                            // unstyled text from where we started until the end
+                            // of the "styled" text
 
-                            // note: we don't eat the different closing token here,
-                            // because the "successful" case below (where style_stack_len
-                            // == pre_stack_len) handles eating the closing token.
+                            // note: we don't eat the different closing token
+                            // here, because the "successful" case below (where
+                            // style_stack_len == pre_stack_len) handles eating
+                            // the closing token.
                             //
                             // here, we're in the inner parse, parsing the text
                             // *within* the style markers. just because we found
                             // a style closer here doesn't mean we're allowed to
                             // eat it
-                            return .{ .leaf = text };
+                            return .{ .leaf = lexer.bytes[start_pos..lexer.pos] };
                         } else { // style_stack.len == pre_stack_len
                             // the style stack did not shrink any further,
                             // and thus our style was closed
@@ -266,12 +270,6 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                                     .children = try children.toOwnedSlice(alloc),
                                 },
                             };
-                        }
-
-                        // check if the style wasn't closed - if not, we should just
-                        // consider everything from pre to now unstyled
-                        if (!style_stack.hasStyle(style)) {
-                            pre_text = lexer.bytes[start_pos..lexer.pos];
                         }
 
                         continue;

@@ -87,7 +87,7 @@ pub const TagAttribute = struct {
 
 pub const Node = union(enum) {
     branch: struct {
-        children: []const Child,
+        children: []Child,
     },
     leaf: []const u8,
 
@@ -113,8 +113,52 @@ pub const Node = union(enum) {
         }
     }
 
+    pub fn mergeFront(node: *Node, alloc: Allocator, text: []const u8) !void {
+        if (text.len == 0) {
+            // the node will end up being null, so ignore it
+            return;
+        }
+
+        switch (node.*) {
+            .leaf => |this_text| {
+                // assert that they're mergeable
+                std.debug.assert(text.ptr + text.len == this_text.ptr);
+
+                node.leaf.ptr -= text.len;
+                node.leaf.len += text.len;
+            },
+            .branch => |branch| {
+                // branch should never be empty
+                std.debug.assert(branch.children.len > 0);
+
+                const first_child = branch.children[0];
+                if (first_child.style == null) {
+                    // there isn't a style boundary, so we can merge onto the
+                    // first child
+                    try first_child.node.mergeFront(alloc, text);
+                } else {
+                    var new_children = try alloc.alloc(Child, branch.children.len + 1);
+
+                    // copy over the old, offset by one
+                    @memcpy(new_children[1..], branch.children);
+
+                    // create the new child
+                    new_children[0].style = null;
+                    new_children[0].node = try alloc.create(Node);
+                    new_children[0].node.* = .{ .leaf = text };
+
+                    // replace the old children with the new
+                    alloc.free(branch.children);
+
+                    // `node.` here because `branch` is immutable
+                    node.branch.children = new_children;
+                }
+            },
+        }
+    }
+
     pub const Child = struct {
-        node: *const Node,
+        node: *Node,
         style: ?Style = null,
 
         pub fn deinit(child: *const Child, alloc: Allocator) void {
