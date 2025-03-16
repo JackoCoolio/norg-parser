@@ -136,12 +136,6 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                     // - and next character is NOT .whitespace
                     const can_open = (prev_tok_type != .word) and (next_tok_type != .ws);
 
-                    if (!can_open and !can_close) {
-                        // can't do anything with this :(
-                        lexer.advance();
-                        continue;
-                    }
-
                     if (can_close and style_stack.popStyle(style)) {
                         // we're closing this style
 
