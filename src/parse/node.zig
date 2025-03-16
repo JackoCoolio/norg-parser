@@ -168,6 +168,14 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                         lexer.advance(); // skip the style opener
                         const styled = try parseInner(alloc, lexer, style_stack);
 
+                        if (style_stack.hasStyle(style)) {
+                            // the style wasn't closed, because we either reached
+                            // the end of the document or reached another style
+                            // closer. either way, just return the leaf that we
+                            // have up to here
+                            return Node.fromText(lexer.bytes[start_pos..lexer.pos]);
+                        }
+
                         if (style_stack.len < pre_stack_len) {
                             // we encountered a *different* style closer
                             // before we closed this one - advance text
@@ -464,5 +472,11 @@ test "weird case" {
                 },
             },
         },
+    });
+}
+
+test "unclosed style" {
+    try testNodeParse("_hello", .{
+        .leaf = "_hello",
     });
 }
