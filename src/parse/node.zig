@@ -122,9 +122,13 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
 
         switch (token) {
             .newline => {
+                const pos = lexer.pos;
                 lexer.advance();
-                if (following_newline) {
-                    return Node.fromText(lexer.bytes[start_pos..lexer.pos]);
+                if (lexer.peekToken()) |tok| {
+                    if (tok.isNewline()) {
+                        lexer.advance();
+                        return Node.fromText(lexer.bytes[start_pos..pos]);
+                    }
                 }
             },
             .symbol => |sym| {
@@ -531,5 +535,33 @@ test "nested styles with one unclosed" {
         \\    italic "c"
         \\  )
         \\)
+    );
+}
+
+test "newline doesn't terminate span" {
+    try testCase("a\nb",
+        \\"a
+        \\b"
+    );
+}
+
+test "newline doesn't terminate style" {
+    try testCase("*a\nb*",
+        \\(bold "a
+        \\b")
+    );
+}
+
+test "paragraph break DOES terminate style" {
+    try testCase("*a\n\nb*",
+        \\"*a"
+    );
+}
+
+test "paragraph break with whitespace between doesn't terminate style" {
+    try testCase("*a\n \nb*",
+        \\(bold "a
+        \\ 
+        \\b")
     );
 }
