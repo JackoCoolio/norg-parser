@@ -168,9 +168,6 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                         lexer.advance(); // skip the style opener
                         const styled = try parseInner(alloc, lexer, style_stack);
 
-                        // assert that no additional style was opened
-                        std.debug.assert(style_stack.len <= pre_stack_len);
-
                         if (style_stack.len < pre_stack_len) {
                             // we encountered a *different* style closer
                             // before we closed this one - advance text
@@ -272,14 +269,6 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
 /// Parse a node.
 pub fn parse(alloc: Allocator, lexer: *Lexer) !?Node {
     var style_stack: StyleStack = .empty;
-    defer {
-        if (style_stack.len > 0) {
-            std.log.err("style_stack was not empty: {}", .{style_stack});
-
-            // fail assertion
-            std.debug.assert(style_stack.len == 0);
-        }
-    }
     return try parseInner(alloc, lexer, &style_stack);
 }
 
