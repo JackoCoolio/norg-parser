@@ -115,7 +115,7 @@ pub const Node = union(enum) {
 
     pub const Child = struct {
         node: *const Node,
-        style: ?Style,
+        style: ?Style = null,
 
         pub fn deinit(child: *const Child, alloc: Allocator) void {
             child.node.deinit(alloc);
