@@ -286,11 +286,34 @@ pub fn parse(alloc: Allocator, lexer: *Lexer) !?Node {
 fn testNodeParse(text: []const u8, expected_node: ?Node) !void {
     var lexer = Lexer{ .bytes = text };
     const actual_node = try parse(std.testing.allocator, &lexer);
-    if (actual_node) |node| {
-        defer node.deinit(std.testing.allocator);
-        try std.testing.expectEqualDeep(expected_node, actual_node);
-    } else {
-        try std.testing.expectEqual(expected_node, actual_node);
+    defer if (actual_node) |node| node.deinit(std.testing.allocator);
+
+    if (std.testing.expectEqualDeep(expected_node, actual_node)) {} else |err| {
+        var buf = std.ArrayList(u8).init(std.testing.allocator);
+        defer buf.deinit();
+
+        if (expected_node) |exp_node| {
+            try exp_node.toDebugString(buf.writer().any());
+        } else {
+            try buf.appendSlice("null");
+        }
+        const expected_node_pretty = try std.testing.allocator.alloc(u8, buf.items.len);
+        defer std.testing.allocator.free(expected_node_pretty);
+        @memcpy(expected_node_pretty, buf.items[0..buf.items.len]);
+
+        buf.clearRetainingCapacity();
+        if (actual_node) |act_node| {
+            try act_node.toDebugString(buf.writer().any());
+        } else {
+            try buf.appendSlice("null");
+        }
+        const actual_node_pretty = try std.testing.allocator.alloc(u8, buf.items.len);
+        defer std.testing.allocator.free(actual_node_pretty);
+        @memcpy(actual_node_pretty, buf.items[0..buf.items.len]);
+
+        std.debug.print("expected: {s}\ngot: {s}\n\n", .{ expected_node_pretty, actual_node_pretty });
+
+        return err;
     }
 }
 

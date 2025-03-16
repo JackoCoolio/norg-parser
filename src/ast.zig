@@ -154,4 +154,42 @@ pub const Node = union(enum) {
             };
         }
     };
+
+    fn toDebugStringInner(node: *const Node, writer: std.io.AnyWriter, depth: u16) !void {
+        switch (node.*) {
+            .leaf => |text| {
+                // text in quotes
+                try writer.writeByte('"');
+                _ = try writer.write(text);
+                try writer.writeByte('"');
+            },
+            .branch => |branch| {
+                try writer.writeByte('(');
+                if (branch.children.len == 1 and branch.children[0].node.* == .leaf) {
+                    if (branch.children[0].style) |style| {
+                        _ = try writer.write(@tagName(style));
+                        try writer.writeByte(' ');
+                    }
+                    try branch.children[0].node.toDebugStringInner(writer, 0);
+                } else {
+                    try writer.writeByte('\n');
+                    for (branch.children) |child| {
+                        try writer.writeByteNTimes(' ', (depth + 1) * 2);
+                        if (child.style) |style| {
+                            _ = try writer.write(@tagName(style));
+                            try writer.writeByte(' ');
+                        }
+                        try child.node.toDebugStringInner(writer, depth + 1);
+                        try writer.writeByte('\n');
+                    }
+                    try writer.writeByteNTimes(' ', depth * 2);
+                }
+                try writer.writeByte(')');
+            },
+        }
+    }
+
+    pub fn toDebugString(node: *const Node, writer: std.io.AnyWriter) !void {
+        try node.toDebugStringInner(writer, 0);
+    }
 };
