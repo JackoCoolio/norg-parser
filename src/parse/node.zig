@@ -181,9 +181,15 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                             // before we closed this one - advance text
                             // and return text node
                             const text = lexer.bytes[start_pos..lexer.pos];
-                            // eat the closing token
-                            lexer.advance();
-                            std.log.err("error A", .{});
+
+                            // note: we don't eat the different closing token here,
+                            // because the "successful" case below (where style_stack_len
+                            // == pre_stack_len) handles eating the closing token.
+                            //
+                            // here, we're in the inner parse, parsing the text
+                            // *within* the style markers. just because we found
+                            // a style closer here doesn't mean we're allowed to
+                            // eat it
                             return .{ .leaf = text };
                         } else { // style_stack.len == pre_stack_len
                             // the style stack did not shrink any further,
@@ -478,5 +484,22 @@ test "weird case" {
 test "unclosed style" {
     try testNodeParse("_hello", .{
         .leaf = "_hello",
+    });
+}
+
+test "incorrectly overlapping styles" {
+    try testNodeParse("*a _b* c_", .{
+        .branch = .{
+            .children = &[_]Node.Child{
+                .{
+                    .style = .bold,
+                    .node = &.{ .leaf = "a _b" },
+                },
+                .{
+                    .style = null,
+                    .node = &.{ .leaf = " c_" },
+                },
+            },
+        },
     });
 }
