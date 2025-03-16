@@ -294,23 +294,23 @@ fn testNodeParse(text: []const u8, expected_node: ?Node) !void {
     }
 }
 
-test "Node.parse returns null when empty" {
+test "empty string" {
     try testNodeParse("", null);
 }
 
-test "Node.parse parses plain single word" {
+test "single plain-text word" {
     try testNodeParse("foo", Node{
         .leaf = "foo",
     });
 }
 
-test "Node.parse parses multiple plain words" {
+test "multiple plain-text word" {
     try testNodeParse("foo bar", Node{
         .leaf = "foo bar",
     });
 }
 
-test "Node.parse parses a singularly, fully-styled word" {
+test "single styled word" {
     try testNodeParse("*foo*", Node{
         .branch = .{
             .children = &[_]Node.Child{
@@ -325,7 +325,7 @@ test "Node.parse parses a singularly, fully-styled word" {
     });
 }
 
-test "Node.parse parses a sentence with a single styled word" {
+test "sentence with styled word" {
     try testNodeParse("look, *this* word is bold!", Node{
         .branch = .{
             .children = &[_]Node.Child{
@@ -350,7 +350,7 @@ test "Node.parse parses a sentence with a single styled word" {
     });
 }
 
-test "Node.parse parses a sentence with two styled words" {
+test "sentence with two styled words" {
     try testNodeParse("look, *this* word and /this/ one are bold!", Node{
         .branch = .{
             .children = &[_]Node.Child{
@@ -387,7 +387,7 @@ test "Node.parse parses a sentence with two styled words" {
     });
 }
 
-test "Node.parse parses a sentence that ends with a style" {
+test "sentence that ends with style" {
     try testNodeParse("the last word is *bold*", .{
         .branch = .{
             .children = &[_]Node.Child{
@@ -434,7 +434,7 @@ test "sentence with nested styles" {
     });
 }
 
-test "Node.parse parses a sentence with nested styles" {
+test "sentence where two styles end at the same point" {
     try testNodeParse("_all underline, but some /italic/_", .{
         .branch = .{
             .children = &[_]Node.Child{
@@ -460,7 +460,7 @@ test "Node.parse parses a sentence with nested styles" {
     });
 }
 
-test "weird case" {
+test "style closer between two symbols" {
     // should be <b>hello*</b>!
     try testNodeParse("_hello*_!", .{
         .branch = .{
@@ -501,14 +501,11 @@ test "incorrectly overlapping styles" {
     });
 }
 
-test "empty style span (1)" {
+test "empty style span" {
     // empty style span shouldn't be styled
     try testNodeParse("**a", .{
         .leaf = "**a",
     });
-}
-
-test "empty style span (2)" {
     try testNodeParse("a ** a", .{
         .leaf = "a ** a",
     });
@@ -532,5 +529,11 @@ test "nested empty style span" {
                 },
             },
         },
+    });
+}
+
+test "wedged symbol" {
+    try testNodeParse("a*b  c*", .{
+        .leaf = "a*b  c*",
     });
 }
