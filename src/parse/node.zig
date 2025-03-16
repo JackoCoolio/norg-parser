@@ -177,6 +177,8 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                         lexer.advance(); // skip the style opener
                         const inner_start_pos = lexer.pos;
                         const styled = try parseInner(alloc, lexer, style_stack);
+                        var should_deinit_styled = true;
+                        defer if (should_deinit_styled) if (styled) |s| s.deinit(alloc);
                         if (lexer.pos == inner_start_pos) {
                             // the closer immediately followed the opener - just
                             // continue, since this wasn't a valid opener
@@ -222,6 +224,7 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                                 };
                             }
 
+                            should_deinit_styled = false;
                             (try children.addOne(alloc)).* = .{
                                 .style = style,
                                 .node = blk: {
