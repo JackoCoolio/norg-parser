@@ -21,6 +21,22 @@ pub const Lexer = struct {
         return lex.pos >= lex.bytes.len;
     }
 
+    /// Advances the lexer if the leading character(s) is a newline.
+    /// Accepts CR, LF, and CRLF.
+    fn eatNewline(lex: *Lexer) bool {
+        // we consider CR, LF, and CRLF each as a single newline
+        var ok = false;
+        if (lex.bytes[lex.pos] == '\r') {
+            lex.pos += 1;
+            ok = true;
+        }
+        if (lex.bytes[lex.pos] == '\n') {
+            lex.pos += 1;
+            ok = true;
+        }
+        return ok;
+    }
+
     /// Advances the lexer as long as the leading character is whitespace.
     fn eatWhitespace(lex: *Lexer) ?[]const u8 {
         const orig_pos = lex.pos;
@@ -70,6 +86,12 @@ pub const Lexer = struct {
     fn eatTokenInner(lex: *Lexer) ?Token {
         if (lex.isEmpty()) {
             return null;
+        }
+
+        // note: this must be checked before `eatWhitespace`, because newline
+        // characters are considered whitespace
+        if (lex.eatNewline()) {
+            return .newline;
         }
 
         if (lex.eatWhitespace()) |ws| {
@@ -137,6 +159,14 @@ pub const Token = union(enum) {
     /// Returns `true` if this token is the given symbol.
     pub inline fn isSymbol(tok: Token, symbol: Symbol) bool {
         return tok == .symbol and tok.symbol == symbol;
+    }
+
+    /// Returns `true` if this token is a newline.
+    pub inline fn isNewline(tok: Token) bool {
+        return switch (tok) {
+            .newline => true,
+            else => false,
+        };
     }
 };
 

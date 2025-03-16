@@ -18,7 +18,7 @@ const StyleStack = struct {
     };
 
     pub fn findStyle(stack: *const StyleStack, style: Node.Style) ?usize {
-        for (0..stack.inner.len) |i| {
+        for (0..stack.len) |i| {
             const this_style = stack.inner[i];
             if (this_style == style) {
                 return i;
@@ -44,16 +44,18 @@ const StyleStack = struct {
 
     pub fn popStyle(stack: *StyleStack, style: Node.Style) bool {
         if (stack.findStyle(style)) |start| {
-            // TODO(perf): memset
-            for (start..stack.len) |i| {
-                stack.inner[i] = null;
-            }
             // update length
             stack.len = start;
             return true;
         } else {
             return false;
         }
+    }
+
+    pub fn clear(stack: *StyleStack) void {
+        // note: we don't need to erase anything, since everything after
+        // stack.len is treated as garbage data anyway
+        stack.len = 0;
     }
 };
 
