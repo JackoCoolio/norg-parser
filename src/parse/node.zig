@@ -97,29 +97,8 @@ fn isDoubled(lexer: *const Lexer, symbol: Symbol) bool {
 
 fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node {
     const start_pos = lexer.pos;
-    var following_newline = false;
-    var following_ws = true;
 
     while (lexer.peekToken()) |token| {
-        if (lexer.previous_token) |prev_token| switch (prev_token) {
-            .newline => {
-                following_newline = true;
-                following_ws = true;
-            },
-            .whitespace => {
-                following_ws = true;
-                following_newline = false;
-            },
-            .symbol => {
-                following_newline = false;
-                following_ws = true;
-            },
-            else => {
-                following_ws = false;
-                following_newline = false;
-            },
-        };
-
         switch (token) {
             .newline => {
                 const pos = lexer.pos;
