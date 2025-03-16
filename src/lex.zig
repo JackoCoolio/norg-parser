@@ -133,6 +133,11 @@ pub const Token = union(enum) {
     word: []const u8,
     /// A punctuation character.
     symbol: Symbol,
+
+    /// Returns `true` if this token is the given symbol.
+    pub inline fn isSymbol(tok: Token, symbol: Symbol) bool {
+        return tok == .symbol and tok.symbol == symbol;
+    }
 };
 
 pub const Symbol = enum(u8) {

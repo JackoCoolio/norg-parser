@@ -1,7 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const Lexer = @import("../lex.zig").Lexer;
+const lex = @import("../lex.zig");
+const Lexer = lex.Lexer;
+const Token = lex.Token;
+const Symbol = lex.Symbol;
 const ast = @import("../ast.zig");
 const Node = ast.Node;
 
@@ -76,6 +79,20 @@ test "StyleStack: popStyle works" {
     try std.testing.expectEqual(0, stack.len); // *both* popped
 }
 
+fn isDoubled(lexer: *const Lexer, symbol: Symbol) bool {
+    if (lexer.previous_token) |prev_token| {
+        if (prev_token.isSymbol(symbol)) {
+            return true;
+        }
+    }
+    if (lexer.peekNthToken(1)) |next_token| {
+        if (next_token.isSymbol(symbol)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node {
     const start_pos = lexer.pos;
     var following_newline = false;
@@ -127,14 +144,16 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                     else
                         .ws;
 
+                    const is_doubled = isDoubled(lexer, sym);
+
                     // can close if:
                     // - previous character is NOT .whitespace
                     // - and next character is not .word
-                    const can_close = (prev_tok_type != .ws) and (next_tok_type != .word);
+                    const can_close = (prev_tok_type != .ws) and (next_tok_type != .word) and !is_doubled;
                     // can open if:
                     // - previous character is NOT .word
                     // - and next character is NOT .whitespace
-                    const can_open = (prev_tok_type != .word) and (next_tok_type != .ws);
+                    const can_open = (prev_tok_type != .word) and (next_tok_type != .ws) and !is_doubled;
 
                     if (can_close and style_stack.popStyle(style)) {
                         // we're closing this style
@@ -612,5 +631,25 @@ test "three-level nesting" {
                 },
             },
         },
+    });
+}
+
+test "consecutive same-style markers with content" {
+    // a style marker cannot close a style if it is followed by itself
+    try testNodeParse("*foo**bar*", .{
+        .branch = .{
+            .children = &[_]Node.Child{
+                .{
+                    .style = .bold,
+                    .node = &.{ .leaf = "foo**bar" },
+                },
+            },
+        },
+    });
+}
+
+test "double style marker is ignored" {
+    try testNodeParse("**bold**", .{
+        .leaf = "**bold**",
     });
 }
