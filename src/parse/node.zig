@@ -537,3 +537,57 @@ test "wedged symbol" {
         .leaf = "a*b  c*",
     });
 }
+
+test "multiple same-style spans" {
+    try testNodeParse("*foo* *bar*", .{
+        .branch = .{
+            .children = &[_]Node.Child{
+                .{ .style = .bold, .node = &.{ .leaf = "foo" } },
+                .{ .style = null, .node = &.{ .leaf = " " } },
+                .{ .style = .bold, .node = &.{ .leaf = "bar" } },
+            },
+        },
+    });
+}
+
+test "mixed numbers and symbols in styled content" {
+    try testNodeParse("*hello123!*", .{
+        .branch = .{
+            .children = &[_]Node.Child{
+                .{ .style = .bold, .node = &.{ .leaf = "hello123!" } },
+            },
+        },
+    });
+}
+
+test "three-level nesting" {
+    try testNodeParse("_a *b /c/ d* e_", .{
+        .branch = .{
+            .children = &[_]Node.Child{
+                .{
+                    .style = .underline,
+                    .node = &.{
+                        .branch = .{
+                            .children = &[_]Node.Child{
+                                .{ .style = null, .node = &.{ .leaf = "a " } },
+                                .{
+                                    .style = .bold,
+                                    .node = &.{
+                                        .branch = .{
+                                            .children = &[_]Node.Child{
+                                                .{ .style = null, .node = &.{ .leaf = "b " } },
+                                                .{ .style = .italic, .node = &.{ .leaf = "c" } },
+                                                .{ .style = null, .node = &.{ .leaf = " d" } },
+                                            },
+                                        },
+                                    },
+                                },
+                                .{ .style = null, .node = &.{ .leaf = " e" } },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    });
+}
