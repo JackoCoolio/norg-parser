@@ -305,354 +305,239 @@ pub fn parse(alloc: Allocator, lexer: *Lexer) !?Node {
     return try parseInner(alloc, lexer, &style_stack);
 }
 
-fn testNodeParse(text: []const u8, expected_node: ?Node) !void {
+/// Executes a test case by parsing the given string of text and comparing it
+/// to the expected node structure.
+///
+/// Use this function when an incorrect parse would still be textually
+/// represented identically to the test string. For example, the string
+/// "*foo**bar*" should parse as <b>foo**bar</b>, but an incorrect parse of
+/// <b>foo</b><b>bar</b> would be represented the same.
+///
+/// This also executes `quickTestCase`.
+fn testCase(text: []const u8, expected_structure: ?[]const u8) !void {
+    // assert that the parsed structure deserializes to the same string
+    try quickTestCase(text);
+
     var lexer = Lexer{ .bytes = text };
     const actual_node = try parse(std.testing.allocator, &lexer);
-    defer if (actual_node) |node| node.deinit(std.testing.allocator);
+    if (actual_node) |node| {
+        defer node.deinit(std.testing.allocator);
 
-    if (std.testing.expectEqualDeep(expected_node, actual_node)) {} else |err| {
         var buf = std.ArrayList(u8).init(std.testing.allocator);
         defer buf.deinit();
+        try node.toDebugString(buf.writer().any());
 
-        if (expected_node) |exp_node| {
-            try exp_node.toDebugString(buf.writer().any());
+        if (expected_structure) |exp_struct| {
+            try std.testing.expectEqualStrings(exp_struct, buf.items[0..buf.items.len]);
         } else {
-            try buf.appendSlice("null");
+            std.debug.panic("expected null\ngot {s}\n", .{buf.items[0..buf.items.len]});
         }
-        const expected_node_pretty = try std.testing.allocator.alloc(u8, buf.items.len);
-        defer std.testing.allocator.free(expected_node_pretty);
-        @memcpy(expected_node_pretty, buf.items[0..buf.items.len]);
+    } else {
+        if (expected_structure) |exp_struct| {
+            std.debug.panic("expected {s}\ngot null\n", .{exp_struct});
+        }
+    }
+}
 
+pub fn quickTestCase(text: []const u8) !void {
+    var lexer = Lexer{ .bytes = text };
+    const actual_node = try parse(std.testing.allocator, &lexer) orelse {
+        if (text.len > 0) {
+            @panic("parse returned null, but string was non-empty");
+        }
+        return;
+    };
+    defer actual_node.deinit(std.testing.allocator);
+
+    var buf = std.ArrayList(u8).init(std.testing.allocator);
+    defer buf.deinit();
+    try actual_node.toString(buf.writer().any());
+
+    if (std.testing.expectEqualStrings(text, buf.items[0..buf.items.len])) {} else |err| {
         buf.clearRetainingCapacity();
-        if (actual_node) |act_node| {
-            try act_node.toDebugString(buf.writer().any());
-        } else {
-            try buf.appendSlice("null");
-        }
-        const actual_node_pretty = try std.testing.allocator.alloc(u8, buf.items.len);
-        defer std.testing.allocator.free(actual_node_pretty);
-        @memcpy(actual_node_pretty, buf.items[0..buf.items.len]);
-
-        std.debug.print("expected: {s}\ngot: {s}\n\n", .{ expected_node_pretty, actual_node_pretty });
-
+        try actual_node.toDebugString(buf.writer().any());
+        std.debug.print("Parse structure:\n{s}\n", .{buf.items[0..buf.items.len]});
         return err;
     }
 }
 
 test "empty string" {
-    try testNodeParse("", null);
+    try testCase("", null);
 }
 
 test "single plain-text word" {
-    try testNodeParse("foo", Node{
-        .leaf = "foo",
-    });
+    try testCase("foo",
+        \\"foo"
+    );
 }
 
 test "multiple plain-text word" {
-    try testNodeParse("foo bar", Node{
-        .leaf = "foo bar",
-    });
+    try testCase("foo bar",
+        \\"foo bar"
+    );
 }
 
 test "single styled word" {
-    try testNodeParse("*foo*", Node{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = .bold,
-                    .node = &.{
-                        .leaf = "foo",
-                    },
-                },
-            },
-        },
-    });
+    try testCase("*foo*",
+        \\(bold "foo")
+    );
 }
 
 test "sentence with styled word" {
-    try testNodeParse("look, *this* word is bold!", Node{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = null,
-                    .node = &.{ .leaf = "look, " },
-                },
-                .{
-                    .style = .bold,
-                    .node = &.{
-                        .leaf = "this",
-                    },
-                },
-                .{
-                    .style = null,
-                    .node = &.{
-                        .leaf = " word is bold!",
-                    },
-                },
-            },
-        },
-    });
+    try testCase("look, *this* word is bold!",
+        \\(
+        \\  "look, "
+        \\  bold "this"
+        \\  " word is bold!"
+        \\)
+    );
 }
 
 test "sentence with two styled words" {
-    try testNodeParse("look, *this* word and /this/ one are bold!", Node{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = null,
-                    .node = &.{ .leaf = "look, " },
-                },
-                .{
-                    .style = .bold,
-                    .node = &.{
-                        .leaf = "this",
-                    },
-                },
-                .{
-                    .style = null,
-                    .node = &.{
-                        .leaf = " word and ",
-                    },
-                },
-                .{
-                    .style = .italic,
-                    .node = &.{
-                        .leaf = "this",
-                    },
-                },
-                .{
-                    .style = null,
-                    .node = &.{
-                        .leaf = " one are bold!",
-                    },
-                },
-            },
-        },
-    });
+    try testCase("look, *this* word and /this/ one are bold!",
+        \\(
+        \\  "look, "
+        \\  bold "this"
+        \\  " word and "
+        \\  italic "this"
+        \\  " one are bold!"
+        \\)
+    );
 }
 
 test "sentence that ends with style" {
-    try testNodeParse("the last word is *bold*", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = null,
-                    .node = &.{ .leaf = "the last word is " },
-                },
-                .{
-                    .style = .bold,
-                    .node = &.{ .leaf = "bold" },
-                },
-            },
-        },
-    });
+    try testCase("the last word is *bold*",
+        \\(
+        \\  "the last word is "
+        \\  bold "bold"
+        \\)
+    );
 }
 
 test "sentence with nested styles" {
-    try testNodeParse("_a *b* c_", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = .underline,
-                    .node = &.{
-                        .branch = .{
-                            .children = &[_]Node.Child{
-                                .{
-                                    .style = null,
-                                    .node = &.{ .leaf = "a " },
-                                },
-                                .{
-                                    .style = .bold,
-                                    .node = &.{ .leaf = "b" },
-                                },
-                                .{
-                                    .style = null,
-                                    .node = &.{ .leaf = " c" },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    });
+    try testCase("_a *b* c_",
+        \\(
+        \\  underline (
+        \\    "a "
+        \\    bold "b"
+        \\    " c"
+        \\  )
+        \\)
+    );
 }
 
 test "sentence where two styles end at the same point" {
-    try testNodeParse("_all underline, but some /italic/_", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = .underline,
-                    .node = &.{
-                        .branch = .{
-                            .children = &[_]Node.Child{
-                                .{
-                                    .style = null,
-                                    .node = &.{ .leaf = "all underline, but some " },
-                                },
-                                .{
-                                    .style = .italic,
-                                    .node = &.{ .leaf = "italic" },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    });
+    try testCase("_all underline, but some /italic/_",
+        \\(
+        \\  underline (
+        \\    "all underline, but some "
+        \\    italic "italic"
+        \\  )
+        \\)
+    );
 }
 
 test "style closer between two symbols" {
     // should be <b>hello*</b>!
-    try testNodeParse("_hello*_!", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = .underline,
-                    .node = &.{ .leaf = "hello*" },
-                },
-                .{
-                    .style = null,
-                    .node = &.{ .leaf = "!" },
-                },
-            },
-        },
-    });
+    try testCase("_hello*_!",
+        \\(
+        \\  underline "hello*"
+        \\  "!"
+        \\)
+    );
 }
 
 test "unclosed style" {
-    try testNodeParse("_hello", .{
-        .leaf = "_hello",
-    });
+    try testCase("_hello",
+        \\"_hello"
+    );
 }
 
 test "incorrectly overlapping styles" {
-    try testNodeParse("*a _b* c_", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = .bold,
-                    .node = &.{ .leaf = "a _b" },
-                },
-                .{
-                    .style = null,
-                    .node = &.{ .leaf = " c_" },
-                },
-            },
-        },
-    });
+    try testCase("*a _b* c_",
+        \\(
+        \\  bold "a _b"
+        \\  " c_"
+        \\)
+    );
 }
 
 test "empty style span" {
     // empty style span shouldn't be styled
-    try testNodeParse("**a", .{
-        .leaf = "**a",
-    });
-    try testNodeParse("a ** a", .{
-        .leaf = "a ** a",
-    });
+    try testCase("**a",
+        \\"**a"
+    );
+    try testCase("a ** a",
+        \\"a ** a"
+    );
 }
 
 test "nested empty style span" {
-    try testNodeParse("o *__* o", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = null,
-                    .node = &.{ .leaf = "o " },
-                },
-                .{
-                    .style = .bold,
-                    .node = &.{ .leaf = "__" },
-                },
-                .{
-                    .style = null,
-                    .node = &.{ .leaf = " o" },
-                },
-            },
-        },
-    });
+    try testCase("o *__* o",
+        \\(
+        \\  "o "
+        \\  bold "__"
+        \\  " o"
+        \\)
+    );
 }
 
 test "wedged symbol" {
-    try testNodeParse("a*b  c*", .{
-        .leaf = "a*b  c*",
-    });
+    try testCase("a*b  c*",
+        \\"a*b  c*"
+    );
 }
 
 test "multiple same-style spans" {
-    try testNodeParse("*foo* *bar*", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{ .style = .bold, .node = &.{ .leaf = "foo" } },
-                .{ .style = null, .node = &.{ .leaf = " " } },
-                .{ .style = .bold, .node = &.{ .leaf = "bar" } },
-            },
-        },
-    });
+    try testCase("*foo* *bar*",
+        \\(
+        \\  bold "foo"
+        \\  " "
+        \\  bold "bar"
+        \\)
+    );
 }
 
 test "mixed numbers and symbols in styled content" {
-    try testNodeParse("*hello123!*", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{ .style = .bold, .node = &.{ .leaf = "hello123!" } },
-            },
-        },
-    });
+    try testCase("*hello123!*",
+        \\(bold "hello123!")
+    );
 }
 
 test "three-level nesting" {
-    try testNodeParse("_a *b /c/ d* e_", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = .underline,
-                    .node = &.{
-                        .branch = .{
-                            .children = &[_]Node.Child{
-                                .{ .style = null, .node = &.{ .leaf = "a " } },
-                                .{
-                                    .style = .bold,
-                                    .node = &.{
-                                        .branch = .{
-                                            .children = &[_]Node.Child{
-                                                .{ .style = null, .node = &.{ .leaf = "b " } },
-                                                .{ .style = .italic, .node = &.{ .leaf = "c" } },
-                                                .{ .style = null, .node = &.{ .leaf = " d" } },
-                                            },
-                                        },
-                                    },
-                                },
-                                .{ .style = null, .node = &.{ .leaf = " e" } },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    });
+    try testCase("_a *b /c/ d* e_",
+        \\(
+        \\  underline (
+        \\    "a "
+        \\    bold (
+        \\      "b "
+        \\      italic "c"
+        \\      " d"
+        \\    )
+        \\    " e"
+        \\  )
+        \\)
+    );
 }
 
 test "consecutive same-style markers with content" {
     // a style marker cannot close a style if it is followed by itself
-    try testNodeParse("*foo**bar*", .{
-        .branch = .{
-            .children = &[_]Node.Child{
-                .{
-                    .style = .bold,
-                    .node = &.{ .leaf = "foo**bar" },
-                },
-            },
-        },
-    });
+    try testCase("*foo**bar*",
+        \\(bold "foo**bar")
+    );
 }
 
 test "double style marker is ignored" {
-    try testNodeParse("**bold**", .{
-        .leaf = "**bold**",
-    });
+    try testCase("**bold**",
+        \\"**bold**"
+    );
+}
+
+test "valid style after unclosed style" {
+    try testCase("a *b /c/",
+        \\(
+        \\  "a *b "
+        \\  italic "c"
+        \\)
+    );
 }

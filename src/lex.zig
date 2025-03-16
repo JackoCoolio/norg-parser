@@ -234,7 +234,7 @@ pub const Symbol = enum(u8) {
     }
 
     /// Converts the `Symbol` to the corresponding character.
-    pub fn toChar(sym: Symbol) u8 {
+    pub inline fn toChar(sym: Symbol) u8 {
         return @intFromEnum(sym);
     }
 };

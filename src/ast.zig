@@ -153,6 +153,22 @@ pub const Node = union(enum) {
                 else => null,
             };
         }
+
+        pub fn toSymbol(style: Style) lex.Symbol {
+            return switch (style) {
+                .bold => .asterisk,
+                .italic => .forward_slash,
+                .underline => .underscore,
+                .strikethrough => .hyphen,
+                .spoiler => .exclamation_point,
+                .superscript => .caret,
+                .subscript => .comma,
+                .null => .percent,
+                .inline_code => .backtick,
+                .math => .dollar,
+                .variable => .ampersand,
+            };
+        }
     };
 
     fn toDebugStringInner(node: *const Node, writer: std.io.AnyWriter, depth: u16) !void {
@@ -191,5 +207,18 @@ pub const Node = union(enum) {
 
     pub fn toDebugString(node: *const Node, writer: std.io.AnyWriter) !void {
         try node.toDebugStringInner(writer, 0);
+    }
+
+    pub fn toString(node: *const Node, writer: std.io.AnyWriter) !void {
+        switch (node.*) {
+            .leaf => |text| _ = try writer.write(text),
+            .branch => |branch| {
+                for (branch.children) |child| {
+                    if (child.style) |style| try writer.writeByte(style.toSymbol().toChar());
+                    try child.node.toString(writer);
+                    if (child.style) |style| try writer.writeByte(style.toSymbol().toChar());
+                }
+            },
+        }
     }
 };
