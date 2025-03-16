@@ -161,6 +161,7 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                         if (lexer.pos == inner_start_pos) {
                             // the closer immediately followed the opener - just
                             // continue, since this wasn't a valid opener
+                            lexer.advance();
                             continue;
                         }
 
@@ -510,5 +511,26 @@ test "empty style span (1)" {
 test "empty style span (2)" {
     try testNodeParse("a ** a", .{
         .leaf = "a ** a",
+    });
+}
+
+test "nested empty style span" {
+    try testNodeParse("o *__* o", .{
+        .branch = .{
+            .children = &[_]Node.Child{
+                .{
+                    .style = null,
+                    .node = &.{ .leaf = "o " },
+                },
+                .{
+                    .style = .bold,
+                    .node = &.{ .leaf = "__" },
+                },
+                .{
+                    .style = null,
+                    .node = &.{ .leaf = " o" },
+                },
+            },
+        },
     });
 }
