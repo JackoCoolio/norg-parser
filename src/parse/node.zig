@@ -166,7 +166,13 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
 
                         // because !ws_is_next, we know that there is a valid Node up next
                         lexer.advance(); // skip the style opener
+                        const inner_start_pos = lexer.pos;
                         const styled = try parseInner(alloc, lexer, style_stack);
+                        if (lexer.pos == inner_start_pos) {
+                            // the closer immediately followed the opener - just
+                            // continue, since this wasn't a valid opener
+                            continue;
+                        }
 
                         if (style_stack.hasStyle(style)) {
                             // the style wasn't closed, because we either reached
@@ -501,5 +507,18 @@ test "incorrectly overlapping styles" {
                 },
             },
         },
+    });
+}
+
+test "empty style span (1)" {
+    // empty style span shouldn't be styled
+    try testNodeParse("**a", .{
+        .leaf = "**a",
+    });
+}
+
+test "empty style span (2)" {
+    try testNodeParse("a ** a", .{
+        .leaf = "a ** a",
     });
 }
