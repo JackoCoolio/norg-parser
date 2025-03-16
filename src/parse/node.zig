@@ -144,11 +144,7 @@ fn parseInner(alloc: Allocator, lexer: *Lexer, style_stack: *StyleStack) !?Node 
                         // that the closing symbol isn't included in the
                         // leaf node that we create below
 
-                        if (lexer.pos > start_pos) {
-                            return .{ .leaf = lexer.bytes[start_pos..lexer.pos] };
-                        } else {
-                            return null;
-                        }
+                        return Node.fromText(lexer.bytes[start_pos..lexer.pos]);
                     }
 
                     if (can_open and !style_stack.hasStyle(style)) { // and !ws_is_next
